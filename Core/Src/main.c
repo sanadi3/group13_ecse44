@@ -114,7 +114,7 @@ int main(void)
   MX_I2C2_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  char msg[100];
+  char msg[160];
   struct kalman_state temperature_state = {0.01f, 0.20f, 0.0f, 1.0f, 0.0f};
   struct kalman_state pressure_state = {0.02f, 0.50f, 0.0f, 1.0f, 0.0f};
   int filters_ready = 0;
@@ -123,6 +123,9 @@ int main(void)
   BSP_HSENSOR_Init();
   BSP_PSENSOR_Init();
   int q = BSP_QSPI_Init();   // 0 means OK
+
+  mic_init();
+
   sprintf(msg, "QSPI init: %d\r\n", q);
   HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
   if (q == 0)
@@ -157,8 +160,11 @@ int main(void)
 	  int h = (int)(BSP_HSENSOR_ReadHumidity() * 100);
 	  int p = (int)(pressure * 100);
 	  int pf = (int)(pressure_state.x * 100);
-	  sprintf(msg, "T=%d.%02d -> %d.%02d C  H=%d.%02d %%  P=%d.%02d -> %d.%02d hPa\r\n",
-	          t/100, t%100, tf/100, tf%100, h/100, h%100, p/100, p%100, pf/100, pf%100);
+
+	  int db = (int)mic_get_db();
+
+	  sprintf(msg, "T=%d.%02d -> %d.%02d C  H=%d.%02d %%  P=%d.%02d -> %d.%02d hPa  S=%d dBFS\r\n",
+	          t/100, t%100, tf/100, tf%100, h/100, h%100, p/100, p%100, pf/100, pf%100, db);
 	  HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
 	  if ((q == 0) && ((HAL_GetTick() - last_log) >= 60000))
 	  {
