@@ -115,12 +115,21 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   char msg[100];
+  struct kalman_state temperature_state = {0.01f, 0.20f, 0.0f, 1.0f, 0.0f};
+  struct kalman_state pressure_state = {0.02f, 0.50f, 0.0f, 1.0f, 0.0f};
+  int filters_ready = 0;
+  uint32_t last_log = 0;
   BSP_TSENSOR_Init();
   BSP_HSENSOR_Init();
   BSP_PSENSOR_Init();
   int q = BSP_QSPI_Init();   // 0 means OK
   sprintf(msg, "QSPI init: %d\r\n", q);
   HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
+  if (q == 0)
+  {
+    sprintf(msg, "saved records: %lu\r\n", (unsigned long)logger_count());
+    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -130,12 +139,35 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  int t = (int)(BSP_TSENSOR_ReadTemp() * 100);
+	  float temperature = BSP_TSENSOR_ReadTemp();
+	  float pressure = BSP_PSENSOR_ReadPressure();
+	  if (filters_ready == 0)
+	  {
+	    temperature_state.x = temperature;
+	    pressure_state.x = pressure;
+	    filters_ready = 1;
+	  }
+	  else
+	  {
+	    kalman_c(&temperature_state, temperature);
+	    kalman_c(&pressure_state, pressure);
+	  }
+	  int t = (int)(temperature * 100);
+	  int tf = (int)(temperature_state.x * 100);
 	  int h = (int)(BSP_HSENSOR_ReadHumidity() * 100);
-	  int p = (int)(BSP_PSENSOR_ReadPressure() * 100);
-	  sprintf(msg, "T=%d.%02d C  H=%d.%02d %%  P=%d.%02d hPa\r\n",
-	          t/100, t%100, h/100, h%100, p/100, p%100);
+	  int p = (int)(pressure * 100);
+	  int pf = (int)(pressure_state.x * 100);
+	  sprintf(msg, "T=%d.%02d -> %d.%02d C  H=%d.%02d %%  P=%d.%02d -> %d.%02d hPa\r\n",
+	          t/100, t%100, tf/100, tf%100, h/100, h%100, p/100, p%100, pf/100, pf%100);
 	  HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
+	  if ((q == 0) && ((HAL_GetTick() - last_log) >= 60000))
+	  {
+	    logger_append((int16_t)(temperature * 10.0f), (int16_t)(pressure * 10.0f),
+	                  (int16_t)(temperature_state.x * 10.0f), (int16_t)(pressure_state.x * 10.0f));
+	    sprintf(msg, "logged one record\r\n");
+	    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
+	    last_log = HAL_GetTick();
+	  }
 	  HAL_Delay(1000);
   }
   /* USER CODE END 3 */
